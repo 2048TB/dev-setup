@@ -1550,23 +1550,6 @@ install_ghostty() {
   esac
 }
 
-install_vicinae() {
-  # macOS 不需要 vicinae（使用 Raycast/Alfred）
-  [ "$OS" = "macos" ] && return
-  [ "$MINIMAL_MODE" = true ] && return
-  have_cmd vicinae && return
-
-  log "安装 vicinae 启动器（使用官方统一安装脚本）..."
-
-  # 使用官方安装脚本（适用于所有 Linux 发行版）
-  if run_remote_install_script "安装 vicinae" bash "https://vicinae.com/install.sh"; then
-    info "vicinae 已安装（文档: https://docs.vicinae.com）"
-  else
-    warn "vicinae 安装失败"
-    info "请访问 https://docs.vicinae.com/install 查看手动安装方法"
-  fi
-}
-
 # VS Code 安装 - macOS
 _install_vscode_macos() {
   pkg_install_cask visual-studio-code || warn "VS Code 安装失败"
@@ -2243,7 +2226,6 @@ verify_installations() {
   check_cmd ghostty --version
   check_cmd code --version
   check_telegram_installation
-  check_cmd vicinae --version
   check_cmd fastfetch --version
   check_cmd git-absorb --version
   check_cmd delta --version
@@ -2318,7 +2300,6 @@ usage() {
 特别说明:
   macOS 用户:
     - 首次运行会自动安装 Xcode CLT 和 Homebrew（需要网络）
-    - vicinae 启动器将跳过（推荐使用 Raycast 或 Alfred）
     - Docker 将安装 Docker Desktop（需要手动启动）
     - 部分 Linux 专用软件将自动跳过
 
@@ -2419,9 +2400,6 @@ _stage3_software_installation() {
   install_zellij
   install_yazi
   install_ghostty
-
-  # Linux 专用工具
-  [ "$OS" = "linux" ] && install_vicinae
 
   # GUI 应用
   install_vscode
