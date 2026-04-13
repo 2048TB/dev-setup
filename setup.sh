@@ -1131,7 +1131,41 @@ _install_docker_debian() {
 }
 
 # 设置 Docker GPG 密钥 - Debian
+_docker_apt_repo_distro() {
+  if [ -z "${ID:-}" ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+  fi
+
+  case "${ID:-}" in
+    pop|linuxmint)
+      printf 'ubuntu\n'
+      ;;
+    *)
+      printf '%s\n' "${ID:-}"
+      ;;
+  esac
+}
+
+_docker_apt_repo_codename() {
+  if [ -z "${ID:-}" ] || { [ -z "${VERSION_CODENAME:-}" ] && [ -z "${UBUNTU_CODENAME:-}" ]; }; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+  fi
+
+  case "${ID:-}" in
+    pop|linuxmint)
+      printf '%s\n' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+      ;;
+    *)
+      printf '%s\n' "${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
+      ;;
+  esac
+}
+
 _setup_docker_gpg_key() {
+  local docker_repo_distro tmp_gpg
+
   ${SUDO} install -m 0755 -d /etc/apt/keyrings || {
     warn "创建 keyrings 目录失败"
     return 1
@@ -1141,10 +1175,15 @@ _setup_docker_gpg_key() {
     return 0
   fi
 
-  local tmp_gpg
+  docker_repo_distro="$(_docker_apt_repo_distro)"
+  if [ -z "$docker_repo_distro" ]; then
+    warn "无法确定 Docker APT 仓库发行版"
+    return 1
+  fi
+
   tmp_gpg=$(mktemp)
   
-  if ! retry_curl "https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg" "$tmp_gpg"; then
+  if ! retry_curl "https://download.docker.com/linux/${docker_repo_distro}/gpg" "$tmp_gpg"; then
     warn "下载 Docker GPG 密钥失败"
     rm -f "$tmp_gpg"
     return 1
@@ -1163,7 +1202,16 @@ _setup_docker_gpg_key() {
 
 # 添加 Docker 仓库 - Debian
 _add_docker_repository() {
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=$DOCKER_GPG_KEY_PATH] https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  local docker_repo_distro docker_repo_codename
+
+  docker_repo_distro="$(_docker_apt_repo_distro)"
+  docker_repo_codename="$(_docker_apt_repo_codename)"
+  if [ -z "$docker_repo_distro" ] || [ -z "$docker_repo_codename" ]; then
+    warn "无法确定 Docker APT 仓库信息"
+    return 1
+  fi
+
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=$DOCKER_GPG_KEY_PATH] https://download.docker.com/linux/${docker_repo_distro} ${docker_repo_codename} stable" | \
     ${SUDO} tee "$DOCKER_APT_LIST_PATH" > /dev/null
 }
 
