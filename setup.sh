@@ -2283,17 +2283,22 @@ usage() {
 
 支持的平台:
   Linux:
-    - Fedora (tested: 39, 40, 41)
-    - Ubuntu (tested: 22.04 LTS, 24.04 LTS)
-    - Debian (tested: 12 Bookworm)
-    - Linux Mint, Pop!_OS (基于 Ubuntu)
+    - Fedora
+    - Debian
+    - Ubuntu
+    - Linux Mint, Pop!_OS（基于 Ubuntu）
 
   macOS:
-    - macOS 12 (Monterey) 及以上
-    - 支持 Intel 和 Apple Silicon (M1/M2/M3)
+    - macOS 12 及以上
+    - 支持 Intel 和 Apple Silicon
     - 自动安装 Homebrew 和 Xcode Command Line Tools
 
 特别说明:
+  通用:
+    - install.sh 会先下载完整仓库再执行 setup.sh
+    - 配置文件部署范围见 README
+    - mise 负责语言运行时和常用开发工具
+
   macOS 用户:
     - 首次运行会自动安装 Xcode CLT 和 Homebrew（需要网络）
     - Docker 将安装 Docker Desktop（需要手动启动）
