@@ -795,7 +795,9 @@ _install_nerd_fonts_macos() {
 install_nerd_fonts() {
   step "安装 Nerd Fonts（终端图标字体）..."
 
-  _should_install_nerd_fonts || return
+  if ! _should_install_nerd_fonts; then
+    return 0
+  fi
 
   case "$OS" in
     linux)
