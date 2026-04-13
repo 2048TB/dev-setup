@@ -15,7 +15,9 @@ SCRIPT_VERSION="5.0.0"
 if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
   echo -e "\033[1;31m[✗]\033[0m 错误: 需要 Bash 4.0 或更高版本（当前版本: ${BASH_VERSION}）"
   echo -e "\033[1;34m[i]\033[0m macOS 用户请执行: brew install bash"
-  echo -e "\033[1;34m[i]\033[0m 或使用新版 bash 运行: /usr/local/bin/bash $0"
+  echo -e "\033[1;34m[i]\033[0m 或使用新版 bash 运行:"
+  echo -e "\033[1;34m[i]\033[0m   /opt/homebrew/bin/bash $0"
+  echo -e "\033[1;34m[i]\033[0m   /usr/local/bin/bash $0"
   exit 1
 fi
 
@@ -380,6 +382,7 @@ have_cmd() { command -v "$1" >/dev/null 2>&1; }
 readonly MAX_DOWNLOAD_RETRIES=3        # 网络下载失败时的最大重试次数
 readonly INITIAL_RETRY_DELAY=2         # 首次重试前的等待秒数（后续指数增长）
 readonly DNF_PARALLEL_DOWNLOADS=20     # DNF 包管理器的并行下载数
+readonly XCODE_CLT_MAX_WAIT_SECONDS=1800
 
 # Docker 相关常量
 readonly DOCKER_FEDORA_REPO_URL="https://download.docker.com/linux/fedora/docker-ce.repo"
@@ -584,6 +587,51 @@ check_arch() {
 
 # ================= macOS 专用前置 =================
 
+find_homebrew_bin() {
+  local candidate
+
+  for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew "$(command -v brew 2>/dev/null || true)"; do
+    [ -n "$candidate" ] || continue
+    [ -x "$candidate" ] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+
+  return 1
+}
+
+activate_homebrew_for_current_session() {
+  local brew_bin=""
+
+  if ! brew_bin="$(find_homebrew_bin)"; then
+    return 1
+  fi
+
+  eval "$("$brew_bin" shellenv)"
+}
+
+macos_major_version() {
+  local version=""
+
+  have_cmd sw_vers || return 1
+  version="$(sw_vers -productVersion 2>/dev/null)" || return 1
+  printf '%s\n' "${version%%.*}"
+}
+
+macos_version_at_least() {
+  local required_major="$1"
+  local current_major=""
+
+  current_major="$(macos_major_version)" || return 1
+  [ "${current_major:-0}" -ge "$required_major" ]
+}
+
+macos_app_exists() {
+  local app_name="$1"
+
+  [ -d "/Applications/${app_name}.app" ] || [ -d "$HOME/Applications/${app_name}.app" ]
+}
+
 # 确保 Xcode Command Line Tools 已安装（macOS 必需）
 ensure_xcode_clt() {
   [ "$OS" != "macos" ] && return 0
@@ -599,13 +647,21 @@ ensure_xcode_clt() {
 
   log "安装 Xcode Command Line Tools..."
   info "将弹出安装窗口，请按照提示操作"
-  xcode-select --install
+  if ! xcode-select --install >/dev/null 2>&1; then
+    warn "未能直接启动 Xcode Command Line Tools 安装器，可能已在安装中或需要手动打开系统设置"
+  fi
 
   # 等待用户完成安装
+  local waited_seconds=0
   info "等待 Xcode Command Line Tools 安装完成..."
-  info "（这可能需要几分钟时间，请耐心等待）"
+  info "（最多等待 $((XCODE_CLT_MAX_WAIT_SECONDS / 60)) 分钟，超时后会退出）"
   until xcode-select -p &>/dev/null; do
+    if [ "$waited_seconds" -ge "$XCODE_CLT_MAX_WAIT_SECONDS" ]; then
+      err "等待 Xcode Command Line Tools 安装超时，请确认安装窗口是否完成"
+      return 1
+    fi
     sleep 5
+    waited_seconds=$((waited_seconds + 5))
   done
 }
 
@@ -614,6 +670,10 @@ ensure_homebrew() {
   [ "$OS" != "macos" ] && return 0
 
   if have_cmd brew; then
+    return 0
+  fi
+
+  if activate_homebrew_for_current_session >/dev/null 2>&1 && have_cmd brew; then
     return 0
   fi
 
@@ -627,19 +687,14 @@ ensure_homebrew() {
   fi
 
   [ "$DRY_RUN" = true ] && return 0
-  if ! have_cmd brew; then
-    err "Homebrew 安装后未找到 brew 命令"
+  if ! activate_homebrew_for_current_session >/dev/null 2>&1; then
+    err "Homebrew 安装后未找到 brew 可执行文件"
     return 1
   fi
 
-  # 配置 PATH（区分 Intel 和 Apple Silicon）
-  log "配置 Homebrew 环境变量..."
-  if [ "$(uname -m)" = "arm64" ]; then
-    # Apple Silicon (M1/M2/M3)
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  else
-    # Intel Mac
-    eval "$(/usr/local/bin/brew shellenv)"
+  if ! have_cmd brew; then
+    err "Homebrew 安装后未找到 brew 命令"
+    return 1
   fi
 }
 
@@ -1533,12 +1588,24 @@ _install_ghostty_debian() {
 
 install_ghostty() {
   [ "$MINIMAL_MODE" = true ] && return
-  have_cmd ghostty && return
+
+  if [ "$OS" = "macos" ]; then
+    if macos_app_exists "Ghostty"; then
+      info "Ghostty.app 已安装，跳过"
+      return
+    fi
+  elif have_cmd ghostty; then
+    return
+  fi
 
   log "安装 ghostty 终端模拟器..."
 
   case "$OS" in
     macos)
+      if ! macos_version_at_least 13; then
+        warn "Ghostty 在 macOS 上需要 13+，当前系统将跳过"
+        return 0
+      fi
       pkg_install_cask ghostty || warn "ghostty 安装失败"
       ;;
     linux)
@@ -1691,10 +1758,16 @@ _install_telegram_debian() {
 }
 
 install_telegram() {
-  # 检查是否已安装
-  if have_cmd telegram-desktop; then
-    info "Telegram 已安装，跳过"
-    return
+  if [ "$OS" = "macos" ]; then
+    if macos_app_exists "Telegram"; then
+      info "Telegram.app 已安装，跳过"
+      return
+    fi
+  else
+    if have_cmd telegram-desktop; then
+      info "Telegram 已安装，跳过"
+      return
+    fi
   fi
 
   log "安装 Telegram Desktop..."
@@ -1716,7 +1789,9 @@ install_telegram() {
   esac
 
   # 验证安装
-  if have_cmd telegram-desktop; then
+  if [ "$OS" = "macos" ] && macos_app_exists "Telegram"; then
+    info "Telegram.app 已成功安装"
+  elif have_cmd telegram-desktop; then
     info "Telegram Desktop 已成功安装"
   elif [ "$OS" = "linux" ] && have_cmd flatpak && flatpak list 2>/dev/null | grep -q "org.telegram.desktop"; then
     info "Telegram Desktop 已通过 Flatpak 安装"
@@ -2170,6 +2245,11 @@ verify_installations() {
   }
 
   check_telegram_installation() {
+    if [ "$OS" = "macos" ] && macos_app_exists "Telegram"; then
+      print_check_result "telegram" "Telegram.app"
+      return 0
+    fi
+
     if have_cmd telegram-desktop; then
       run_version_check "telegram" "telegram-desktop" "" --version
       return 0
@@ -2181,6 +2261,22 @@ verify_installations() {
     fi
 
     print_check_result "telegram" "❌ 未找到"
+  }
+
+  check_ghostty_installation() {
+    if [ "$OS" = "macos" ]; then
+      if macos_app_exists "Ghostty"; then
+        print_check_result "ghostty" "Ghostty.app"
+        return 0
+      fi
+
+      if ! macos_version_at_least 13; then
+        print_check_result "ghostty" "已跳过（需要 macOS 13+）"
+        return 0
+      fi
+    fi
+
+    run_version_check "ghostty" "ghostty" "" --version
   }
 
   local tool_specs=(
@@ -2206,7 +2302,6 @@ verify_installations() {
     "lazygit|lazygit||--version"
     "yazi|yazi||--version"
     "ffmpeg|ffmpeg||-version"
-    "ghostty|ghostty||--version"
     "code|code||--version"
     "fastfetch|fastfetch||--version"
     "git-absorb|git-absorb||--version"
@@ -2247,6 +2342,7 @@ verify_installations() {
     fi
     run_version_check "$label" "$primary" "$fallback" "${cmd_args[@]}"
   done
+  check_ghostty_installation
   check_telegram_installation
 }
 
@@ -2292,6 +2388,7 @@ usage() {
     - macOS 12 及以上
     - 支持 Intel 和 Apple Silicon
     - 自动安装 Homebrew 和 Xcode Command Line Tools
+    - Ghostty 在 macOS 上需要 13+
 
 特别说明:
   通用:
@@ -2302,6 +2399,7 @@ usage() {
   macOS 用户:
     - 首次运行会自动安装 Xcode CLT 和 Homebrew（需要网络）
     - Docker 将安装 Docker Desktop（需要手动启动）
+    - Ghostty 在 macOS 12 上会自动跳过
     - 部分 Linux 专用软件将自动跳过
 
 EOF

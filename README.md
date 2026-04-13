@@ -36,12 +36,14 @@ bash setup.sh
 
 - `Linux`: `Fedora`、`Debian`、`Ubuntu`、`Linux Mint`、`Pop!_OS`
 - `macOS`: `macOS 12+`
+  - `Ghostty` 在 `macOS` 上需要 `13+`
 
 ## 运行方式
 
 - `install.sh` 会先下载完整仓库压缩包，再执行其中的 `setup.sh`
 - 这样可以同时拿到 `configs/`，避免直接执行单个 `setup.sh` 时缺少配置文件
 - `setup.sh` 需要 `Bash 4+`
+- `macOS` 通过 `install.sh` 启动时，会在需要时先尝试自动安装 `Homebrew` 和新版 `bash`
 - `mise` 负责语言运行时和常用开发工具
 
 ## 常用选项
@@ -70,4 +72,5 @@ bash setup.sh -s rust -s bun
 - 默认会出现少量交互提示，例如 `Nerd Fonts`、配置文件部署、`Fedora Docker` 选择
 - `Debian/Ubuntu` 上会自动处理 `fd/fdfind`、`bat/batcat` 这类命令名差异
 - 脚本支持重复执行；已有命令和已有配置会尽量跳过或备份后覆盖
-- `macOS` 如果没有 `Bash 4+`，`install.sh` 会直接提示先安装新版 `bash`
+- `macOS 12` 会自动跳过 `Ghostty`
+- 如果 `macOS` 自动 bootstrap 失败，按终端提示手动执行 `brew install bash`
