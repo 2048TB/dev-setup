@@ -703,6 +703,37 @@ configure_flatpak() {
   fi
 }
 
+cleanup_stale_apt_sources() {
+  local apt_sources_dir="${APT_SOURCES_DIR:-/etc/apt/sources.list.d}"
+  local stale_repo_pattern='ppa\.launchpadcontent\.net/lazygit-team/release|lazygit-team/release/ubuntu'
+  local stale_repo_files=()
+  local source_file
+
+  [ "$PKG_MGR" = "apt" ] || return 0
+  [ -d "$apt_sources_dir" ] || return 0
+
+  while IFS= read -r -d '' source_file; do
+    stale_repo_files+=("$source_file")
+  done < <(
+    find "$apt_sources_dir" -maxdepth 1 -type f \( -name '*.list' -o -name '*.sources' -o -name '*.save' \) -print0 2>/dev/null |
+      while IFS= read -r -d '' source_file; do
+        if grep -Eq "$stale_repo_pattern" "$source_file" 2>/dev/null; then
+          printf '%s\0' "$source_file"
+        fi
+      done
+  )
+
+  [ ${#stale_repo_files[@]} -eq 0 ] && return 0
+
+  for source_file in "${stale_repo_files[@]}"; do
+    info "移除过期 APT 源: $source_file"
+    if ! safe_exec ${SUDO} rm -f "$source_file"; then
+      warn "移除过期 APT 源失败: $source_file"
+      return 1
+    fi
+  done
+}
+
 install_fonts_and_dependencies() {
   step "安装必需字体和依赖..."
 
@@ -862,6 +893,7 @@ ensure_extra_repos() {
       fi
       ;;
     debian)
+      cleanup_stale_apt_sources || warn "过期 APT 源清理失败"
       log "确保 PPA 支持已安装..."
       if ! have_cmd add-apt-repository; then
         pkg_install software-properties-common
