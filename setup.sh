@@ -213,15 +213,6 @@ pkg_add_repo() {
           safe_exec ${SUDO} add-apt-repository -y "ppa:$repo_id"
           safe_exec ${SUDO} apt-get update
           ;;
-        deb)
-          # 直接安装 .deb 包
-          local tmp_deb
-          tmp_deb=$(mktemp --suffix=.deb)
-          if retry_curl "$repo_id" "$tmp_deb"; then
-            safe_exec ${SUDO} dpkg -i "$tmp_deb" || safe_exec ${SUDO} apt-get install -f -y
-            rm -f "$tmp_deb"
-          fi
-          ;;
       esac
       ;;
     brew)
@@ -232,6 +223,29 @@ pkg_add_repo() {
       esac
       ;;
   esac
+}
+
+install_deb_package() {
+  local package_url="$1"
+  local tmp_deb
+
+  tmp_deb=$(mktemp --suffix=.deb)
+  if ! retry_curl "$package_url" "$tmp_deb"; then
+    warn "下载 .deb 包失败: $package_url"
+    rm -f "$tmp_deb"
+    return 1
+  fi
+
+  if ! safe_exec ${SUDO} dpkg -i "$tmp_deb"; then
+    if ! safe_exec ${SUDO} apt-get install -f -y; then
+      warn ".deb 依赖修复失败: $package_url"
+      rm -f "$tmp_deb"
+      return 1
+    fi
+  fi
+
+  rm -f "$tmp_deb"
+  return 0
 }
 
 # 包名映射（处理 Fedora/Debian/Homebrew 包名差异）
@@ -994,34 +1008,38 @@ EOF
   esac
 }
 
-# Debian 后处理
-_post_install_debian() {
-  # 创建 fd 符号链接（Debian包安装后命令是fdfind）
-  if have_cmd fdfind && ! have_cmd fd; then
-    safe_exec mkdir -p "$HOME/.local/bin"
-    safe_exec ln -sf "$(command -v fdfind)" "$HOME/.local/bin/fd"
-    info "已创建 fd -> fdfind 符号链接"
-  fi
+ensure_command_alias() {
+  local alias_name="$1"
+  local source_name="$2"
 
-  # 创建 bat 符号链接（Debian/Ubuntu 包安装后命令通常是 batcat）
-  if have_cmd batcat && ! have_cmd bat; then
+  if have_cmd "$source_name" && ! have_cmd "$alias_name"; then
     safe_exec mkdir -p "$HOME/.local/bin"
-    safe_exec ln -sf "$(command -v batcat)" "$HOME/.local/bin/bat"
-    info "已创建 bat -> batcat 符号链接"
+    safe_exec ln -sf "$(command -v "$source_name")" "$HOME/.local/bin/$alias_name"
+    info "已创建 $alias_name -> $source_name 符号链接"
   fi
-
-  # 安装 gh（GitHub CLI）
-  install_github_cli
 }
 
-_fastfetch_release_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64) echo "amd64" ;;
-    aarch64|arm64) echo "aarch64" ;;
-    armv6l) echo "armv6l" ;;
-    armv7l) echo "armv7l" ;;
-    i686|i386) echo "i686" ;;
-    ppc64le) echo "ppc64le" ;;
+ensure_debian_command_aliases() {
+  ensure_command_alias fd fdfind
+  ensure_command_alias bat batcat
+}
+
+map_release_arch() {
+  local target="$1"
+  local raw_arch="${2:-$(uname -m)}"
+
+  case "${target}:${raw_arch}" in
+    fastfetch:x86_64|fastfetch:amd64) echo "amd64" ;;
+    fastfetch:aarch64|fastfetch:arm64) echo "aarch64" ;;
+    fastfetch:armv6l) echo "armv6l" ;;
+    fastfetch:armv7l) echo "armv7l" ;;
+    fastfetch:i686|fastfetch:i386) echo "i686" ;;
+    fastfetch:ppc64le) echo "ppc64le" ;;
+    lazygit:x86_64|lazygit:amd64) echo "x86_64" ;;
+    lazygit:aarch64|lazygit:arm64) echo "arm64" ;;
+    lazygit:armv6l) echo "armv6" ;;
+    yazi:x86_64|yazi:amd64) echo "x86_64" ;;
+    yazi:aarch64|yazi:arm64) echo "aarch64" ;;
     *)
       return 1
       ;;
@@ -1031,13 +1049,26 @@ _fastfetch_release_arch() {
 _install_fastfetch_debian() {
   local arch package_url
 
-  arch="$(_fastfetch_release_arch)" || {
+  arch="$(map_release_arch fastfetch)" || {
     warn "当前架构暂未适配 fastfetch 官方 Debian 包: $(uname -m)"
     return 1
   }
 
   package_url="https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-${arch}.deb"
-  pkg_add_repo deb "$package_url"
+  install_deb_package "$package_url"
+}
+
+install_package_with_override() {
+  local pkg="$1"
+
+  case "${DISTRO}:${pkg}" in
+    debian:fastfetch)
+      _install_fastfetch_debian
+      ;;
+    *)
+      pkg_install "$pkg"
+      ;;
+  esac
 }
 
 install_packages_with_fallback() {
@@ -1053,15 +1084,7 @@ install_packages_with_fallback() {
 
   warn "批量安装失败，回退到逐包安装"
   for pkg in "${packages[@]}"; do
-    case "$pkg" in
-      fastfetch)
-        if [ "$DISTRO" = "debian" ] && _install_fastfetch_debian; then
-          continue
-        fi
-        ;;
-    esac
-
-    if ! pkg_install "$pkg"; then
+    if ! install_package_with_override "$pkg"; then
       failed_packages+=("$pkg")
     fi
   done
@@ -1091,8 +1114,10 @@ install_base_packages() {
 
   install_packages_with_fallback "${mapped_packages[@]}" || warn "部分基础包安装失败"
 
-  # Debian 后处理
-  [ "$DISTRO" = "debian" ] && _post_install_debian
+  if [ "$DISTRO" = "debian" ]; then
+    ensure_debian_command_aliases
+    install_github_cli
+  fi
 }
 
 install_github_cli() {
@@ -1362,21 +1387,10 @@ install_docker() {
   fi
 }
 
-_lazygit_release_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64) echo "x86_64" ;;
-    aarch64|arm64) echo "arm64" ;;
-    armv6l) echo "armv6" ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
 _install_lazygit_debian() {
   local arch version tmp_dir tarball_path binary_path api_url download_url
 
-  arch="$(_lazygit_release_arch)" || {
+  arch="$(map_release_arch lazygit)" || {
     warn "当前架构暂未适配 lazygit 官方二进制包: $(uname -m)"
     return 1
   }
@@ -1455,26 +1469,16 @@ install_lazygit() {
   esac
 }
 
-_yazi_release_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64) echo "x86_64" ;;
-    aarch64|arm64) echo "aarch64" ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
 _install_yazi_debian() {
   local arch package_url
 
-  arch="$(_yazi_release_arch)" || {
+  arch="$(map_release_arch yazi)" || {
     warn "当前架构暂未适配 Yazi 官方 Debian 包: $(uname -m)"
     return 1
   }
 
   package_url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${arch}-unknown-linux-gnu.deb"
-  pkg_add_repo deb "$package_url"
+  install_deb_package "$package_url"
 }
 
 install_zellij() {
@@ -2130,128 +2134,120 @@ verify_installations() {
   # shellcheck disable=SC1091
   [ -f "$HOME/.config/shell/env" ] && . "$HOME/.config/shell/env"
 
-  check_cmd() {
-    local cmd="$1"
-    local output=""
-    shift
-    if have_cmd "$cmd"; then
-      if output="$("$cmd" "$@" 2>/dev/null | head -n1)"; then
-        if [ -n "$output" ]; then
-          printf "  %-15s %s\n" "$cmd:" "$output"
-        else
-          printf "  %-15s %s\n" "$cmd:" "已安装（无版本输出）"
-        fi
-      else
-        printf "  %-15s %s\n" "$cmd:" "已安装（版本检查失败）"
-      fi
-    else
-      printf "  %-15s %s\n" "$cmd:" "❌ 未找到"
-    fi
+  print_check_result() {
+    local label="$1"
+    local message="$2"
+
+    printf "  %-15s %s\n" "${label}:" "$message"
   }
 
-  check_cmd_alias() {
+  run_version_check() {
     local label="$1"
     local primary="$2"
     local fallback="$3"
+    local command_name=""
     local output=""
     shift 3
 
     if have_cmd "$primary"; then
-      if output="$("$primary" "$@" 2>/dev/null | head -n1)"; then
-        if [ -n "$output" ]; then
-          printf "  %-15s %s\n" "$label:" "$output"
-        else
-          printf "  %-15s %s\n" "$label:" "已安装（无版本输出）"
-        fi
-      else
-        printf "  %-15s %s\n" "$label:" "已安装（版本检查失败）"
-      fi
+      command_name="$primary"
+    elif [ -n "$fallback" ] && have_cmd "$fallback"; then
+      command_name="$fallback"
+    else
+      print_check_result "$label" "❌ 未找到"
       return 0
     fi
 
-    if [ -n "$fallback" ] && have_cmd "$fallback"; then
-      if output="$("$fallback" "$@" 2>/dev/null | head -n1)"; then
-        if [ -n "$output" ]; then
-          printf "  %-15s %s\n" "$label:" "$output"
-        else
-          printf "  %-15s %s\n" "$label:" "已安装（无版本输出）"
-        fi
+    if output="$("$command_name" "$@" 2>/dev/null | head -n1)"; then
+      if [ -n "$output" ]; then
+        print_check_result "$label" "$output"
       else
-        printf "  %-15s %s\n" "$label:" "已安装（版本检查失败）"
+        print_check_result "$label" "已安装（无版本输出）"
       fi
-      return 0
+    else
+      print_check_result "$label" "已安装（版本检查失败）"
     fi
-
-    printf "  %-15s %s\n" "$label:" "❌ 未找到"
   }
 
   check_telegram_installation() {
     if have_cmd telegram-desktop; then
-      printf "  %-15s " "telegram:"
-      telegram-desktop --version 2>/dev/null | head -n1
+      run_version_check "telegram" "telegram-desktop" "" --version
       return 0
     fi
 
     if have_cmd flatpak && flatpak list --app --columns=application 2>/dev/null | grep -qx "org.telegram.desktop"; then
-      printf "  %-15s %s\n" "telegram:" "Flatpak org.telegram.desktop"
+      print_check_result "telegram" "Flatpak org.telegram.desktop"
       return 0
     fi
 
-    printf "  %-15s %s\n" "telegram:" "❌ 未找到"
+    print_check_result "telegram" "❌ 未找到"
   }
 
+  local tool_specs=(
+    "mise|mise||--version"
+    "git|git||--version"
+    "gcc|gcc||--version"
+    "cmake|cmake||--version"
+    "meson|meson||--version"
+    "nvim|nvim||--version"
+    "curl|curl||--version"
+    "zsh|zsh||--version"
+    "tmux|tmux||-V"
+    "zellij|zellij||--version"
+    "rg|rg||--version"
+    "fzf|fzf||--version"
+    "zoxide|zoxide||--version"
+    "fd|fd|fdfind|--version"
+    "bat|bat|batcat|--version"
+    "eza|eza||--version"
+    "btop|btop||--version"
+    "gh|gh||--version"
+    "just|just||--version"
+    "lazygit|lazygit||--version"
+    "yazi|yazi||--version"
+    "ffmpeg|ffmpeg||-version"
+    "ghostty|ghostty||--version"
+    "code|code||--version"
+    "fastfetch|fastfetch||--version"
+    "git-absorb|git-absorb||--version"
+    "delta|delta||--version"
+    "7z|7z||"
+    "sd|sd||--version"
+    "tokei|tokei||--version"
+    "hyperfine|hyperfine||--version"
+    "node|node||--version"
+    "pnpm|pnpm||--version"
+    "go|go||version"
+    "gopls|gopls||version"
+    "dlv|dlv||version"
+    "uv|uv||--version"
+    "bun|bun||--version"
+    "zig|zig||version"
+    "zls|zls||--version"
+    "rustc|rustc||--version"
+    "cargo|cargo||--version"
+    "cargo-nextest|cargo-nextest||--version"
+    "biome|biome||--version"
+    "pyright|pyright||--version"
+    "black|black||--version"
+    "ruff|ruff||--version"
+    "pytest|pytest||--version"
+    "shfmt|shfmt||--version"
+    "starship|starship||--version"
+  )
+  local spec label primary fallback args
+  local -a cmd_args
+
   echo ""
-  check_cmd mise --version
-  check_cmd git --version
-  check_cmd gcc --version
-  check_cmd cmake --version
-  check_cmd meson --version
-  check_cmd nvim --version
-  check_cmd curl --version
-  check_cmd zsh --version
-  check_cmd tmux -V
-  check_cmd zellij --version
-  check_cmd rg --version
-  check_cmd fzf --version
-  check_cmd zoxide --version
-  check_cmd_alias fd fd fdfind --version
-  check_cmd_alias bat bat batcat --version
-  check_cmd eza --version
-  check_cmd btop --version
-  check_cmd gh --version
-  check_cmd just --version
-  check_cmd lazygit --version
-  check_cmd yazi --version
-  check_cmd ffmpeg -version
-  check_cmd ghostty --version
-  check_cmd code --version
+  for spec in "${tool_specs[@]}"; do
+    IFS='|' read -r label primary fallback args <<< "$spec"
+    cmd_args=()
+    if [ -n "$args" ]; then
+      read -r -a cmd_args <<< "$args"
+    fi
+    run_version_check "$label" "$primary" "$fallback" "${cmd_args[@]}"
+  done
   check_telegram_installation
-  check_cmd fastfetch --version
-  check_cmd git-absorb --version
-  check_cmd delta --version
-  check_cmd 7z
-  check_cmd sd --version
-  check_cmd tokei --version
-  check_cmd hyperfine --version
-  check_cmd node --version
-  check_cmd pnpm --version
-  check_cmd go version
-  check_cmd gopls version
-  check_cmd dlv version
-  check_cmd uv --version
-  check_cmd bun --version
-  check_cmd zig version
-  check_cmd zls --version
-  check_cmd rustc --version
-  check_cmd cargo --version
-  check_cmd cargo-nextest --version
-  check_cmd biome --version
-  check_cmd pyright --version
-  check_cmd black --version
-  check_cmd ruff --version
-  check_cmd pytest --version
-  check_cmd shfmt --version
-  check_cmd starship --version
 }
 
 # ================= 使用说明 =================
