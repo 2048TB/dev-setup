@@ -787,18 +787,35 @@ _install_nerd_fonts_fedora() {
 
 # Nerd Fonts 安装 - Debian
 _install_nerd_fonts_debian() {
-  info "Debian 系列需手动安装 Nerd Fonts"
-  info "请访问: https://www.nerdfonts.com/font-downloads"
-  info "或运行以下命令："
-  cat <<'DEBIAN_NERD_FONTS'
-bash -c '
-  curl -fLo /tmp/NerdFontsSymbolsOnly.zip \
-    https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip && \
-  mkdir -p ~/.local/share/fonts && \
-  unzip -o /tmp/NerdFontsSymbolsOnly.zip -d ~/.local/share/fonts/ && \
-  rm /tmp/NerdFontsSymbolsOnly.zip
-'
-DEBIAN_NERD_FONTS
+  local font_dir="${HOME}/.local/share/fonts"
+  local tmp_zip
+  tmp_zip="$(mktemp --suffix=.zip)"
+
+  if ! have_cmd unzip; then
+    pkg_install unzip || {
+      warn "unzip 安装失败，无法自动安装 Nerd Fonts"
+      rm -f "$tmp_zip"
+      return 1
+    }
+  fi
+
+  log "下载 Nerd Fonts Symbols Only..."
+  if ! retry_curl "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip" "$tmp_zip"; then
+    warn "Nerd Fonts 下载失败"
+    rm -f "$tmp_zip"
+    return 1
+  fi
+
+  mkdir -p "$font_dir"
+  if ! safe_exec unzip -o "$tmp_zip" -d "$font_dir"; then
+    warn "Nerd Fonts 解压失败"
+    rm -f "$tmp_zip"
+    return 1
+  fi
+
+  rm -f "$tmp_zip"
+  info "Nerd Fonts 已安装到: $font_dir"
+  return 0
 }
 
 # Nerd Fonts 安装 - macOS
@@ -821,7 +838,11 @@ install_nerd_fonts() {
         debian) _install_nerd_fonts_debian ;;
       esac
       # Linux 需要更新字体缓存
-      fc-cache -fq 2>/dev/null || warn "字体缓存更新失败"
+      if have_cmd fc-cache; then
+        fc-cache -fq 2>/dev/null || warn "字体缓存更新失败"
+      else
+        warn "fc-cache 未找到，跳过字体缓存更新"
+      fi
       ;;
     macos) _install_nerd_fonts_macos ;;
   esac
@@ -1242,8 +1263,119 @@ install_docker() {
   fi
 }
 
+_lazygit_release_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    armv6l) echo "armv6" ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+_install_lazygit_debian() {
+  local arch version tmp_dir tarball_path binary_path api_url download_url
+
+  arch="$(_lazygit_release_arch)" || {
+    warn "当前架构暂未适配 lazygit 官方二进制包: $(uname -m)"
+    return 1
+  }
+
+  api_url="https://api.github.com/repos/jesseduffield/lazygit/releases/latest"
+  if have_cmd jq; then
+    if ! version="$(retry_curl "$api_url" - | jq -r '.tag_name | sub("^v"; "")')"; then
+      warn "获取 lazygit 最新版本失败"
+      return 1
+    fi
+  else
+    if ! version="$(retry_curl "$api_url" - | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)"; then
+      warn "获取 lazygit 最新版本失败"
+      return 1
+    fi
+  fi
+
+  if [ -z "$version" ] || [ "$version" = "null" ]; then
+    warn "无法解析 lazygit 最新版本号"
+    return 1
+  fi
+
+  tmp_dir="$(mktemp -d)"
+  tarball_path="${tmp_dir}/lazygit.tar.gz"
+  binary_path="${tmp_dir}/lazygit"
+  download_url="https://github.com/jesseduffield/lazygit/releases/download/v${version}/lazygit_${version}_linux_${arch}.tar.gz"
+
+  if ! retry_curl "$download_url" "$tarball_path"; then
+    warn "下载 lazygit 官方二进制包失败"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+
+  if ! safe_exec tar -C "$tmp_dir" -xf "$tarball_path" lazygit; then
+    warn "解压 lazygit 失败"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+
+  if ! safe_exec ${SUDO} install "$binary_path" -D -t /usr/local/bin/; then
+    warn "安装 lazygit 到 /usr/local/bin 失败"
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+
+  rm -rf "$tmp_dir"
+  return 0
+}
+
 install_lazygit() {
-  install_tool_package "lazygit" "copr:dejan/lazygit" "ppa:lazygit-team/release" "brew" "lazygit"
+  if [ "$MINIMAL_MODE" = true ]; then
+    info "最小模式，跳过 lazygit"
+    return
+  fi
+
+  if have_cmd lazygit; then
+    info "lazygit 已安装，跳过"
+    return
+  fi
+
+  log "安装 lazygit..."
+  case "$OS" in
+    macos)
+      pkg_install lazygit || warn "lazygit 安装失败"
+      ;;
+    linux)
+      case "$DISTRO" in
+        fedora)
+          install_tool_package "lazygit" "copr:dejan/lazygit" "dnf" "brew" "lazygit"
+          ;;
+        debian)
+          _install_lazygit_debian || warn "lazygit 安装失败"
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_yazi_release_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+_install_yazi_debian() {
+  local arch package_url
+
+  arch="$(_yazi_release_arch)" || {
+    warn "当前架构暂未适配 Yazi 官方 Debian 包: $(uname -m)"
+    return 1
+  }
+
+  package_url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${arch}-unknown-linux-gnu.deb"
+  pkg_add_repo deb "$package_url"
 }
 
 install_zellij() {
@@ -1251,7 +1383,32 @@ install_zellij() {
 }
 
 install_yazi() {
-  install_tool_package "yazi" "copr:lihaohong/yazi" "cargo" "brew" "yazi 文件管理器"
+  if [ "$MINIMAL_MODE" = true ]; then
+    info "最小模式，跳过 yazi"
+    return
+  fi
+
+  if have_cmd yazi; then
+    info "yazi 已安装，跳过"
+    return
+  fi
+
+  log "安装 yazi 文件管理器..."
+  case "$OS" in
+    macos)
+      pkg_install yazi || warn "yazi 安装失败"
+      ;;
+    linux)
+      case "$DISTRO" in
+        fedora)
+          install_tool_package "yazi" "copr:lihaohong/yazi" "dnf" "brew" "yazi 文件管理器"
+          ;;
+        debian)
+          _install_yazi_debian || warn "yazi 安装失败"
+          ;;
+      esac
+      ;;
+  esac
 }
 
 # Ghostty 安装 - Debian
