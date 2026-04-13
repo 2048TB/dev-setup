@@ -1,0 +1,184 @@
+// =====================================================
+// Zellij 增强配置（保留所有默认快捷键）
+// =====================================================
+//
+// 此配置不覆盖任何默认快捷键，只添加额外的常用快捷键
+// 配合使用：zellij-readme.md（说明文档）和 zellij-cheatsheet.md（速查表）
+//
+// 安装方法：
+//   cp zellij-config.kdl ~/.config/zellij/config.kdl
+//   重启 Zellij 或按 Ctrl+o → c 重新载入
+//
+// =====================================================
+
+keybinds {
+    // 保留所有默认快捷键，只添加以下增强快捷键
+
+    normal {
+        // === 快速分割（无需进入 pane 模式）===
+        bind "Alt -" { NewPane "down"; }           // 水平分割（Alt + 减号）
+        bind "Alt \\" { NewPane "right"; }         // 垂直分割（Alt + 反斜杠）
+
+        // === 快速导航（Vim 风格）===
+        bind "Alt h" { MoveFocus "left"; }         // 向左
+        bind "Alt j" { MoveFocus "down"; }         // 向下
+        bind "Alt k" { MoveFocus "up"; }           // 向上
+        bind "Alt l" { MoveFocus "right"; }        // 向右
+
+        // === 快速关闭 ===
+        bind "Alt x" { CloseFocus; }               // 关闭当前面板
+        bind "Alt X" { CloseTab; }                 // 关闭当前标签
+
+        // === 快速跳转标签（无需进入 tab 模式）===
+        bind "Alt 1" { GoToTab 1; }
+        bind "Alt 2" { GoToTab 2; }
+        bind "Alt 3" { GoToTab 3; }
+        bind "Alt 4" { GoToTab 4; }
+        bind "Alt 5" { GoToTab 5; }
+        bind "Alt 6" { GoToTab 6; }
+        bind "Alt 7" { GoToTab 7; }
+        bind "Alt 8" { GoToTab 8; }
+        bind "Alt 9" { GoToTab 9; }
+
+        // === 快速新建标签 ===
+        bind "Alt t" { NewTab; }                   // 新建标签
+
+        // === 快速全屏 ===
+        bind "Alt f" { ToggleFocusFullscreen; }    // 切换全屏
+
+        // === 快速进入滚动模式 ===
+        bind "Alt s" { SwitchToMode "scroll"; }    // 进入滚动模式（查看历史）
+
+        // === 文件选择器 ===
+        bind "Ctrl e" {
+            LaunchOrFocusPlugin "filepicker" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+    }
+
+    scroll {
+        // 在滚动模式中添加更直观的快捷键
+        bind "/" { SwitchToMode "entersearch"; SearchInput 0; }  // 搜索
+        bind "g" { ScrollToTop; }                                 // 跳到顶部
+        bind "G" { ScrollToBottom; }                              // 跳到底部
+    }
+
+    search {
+        // 在搜索模式中添加更直观的导航
+        bind "N" { Search "up"; }                                 // 向上搜索
+    }
+}
+
+// =====================================================
+// 插件配置
+// =====================================================
+
+plugins {
+    tab-bar location="zellij:tab-bar"
+    status-bar location="zellij:status-bar"
+    strider location="zellij:strider"
+    compact-bar location="zellij:compact-bar"
+    session-manager location="zellij:session-manager"
+    plugin-manager location="zellij:plugin-manager"
+    configuration location="zellij:configuration"
+    filepicker location="zellij:strider" {
+        cwd "/"
+    }
+}
+
+// =====================================================
+// UI 优化设置（减少英文显示）
+// =====================================================
+
+// 简化 UI（移除箭头符号和装饰性文本）
+simplified_ui true
+
+// 使用简洁布局
+default_layout "compact"
+
+// 隐藏启动提示
+show_startup_tips false
+
+// 隐藏版本更新提示
+show_release_notes false
+
+// =====================================================
+// 基本设置
+// =====================================================
+
+// 默认模式
+default_mode "normal"
+
+// 默认 Shell
+// default_shell "zsh"
+
+// 复制命令（根据你的系统选择）
+copy_command "wl-copy"                    // Wayland
+// copy_command "xclip -selection clipboard"  // X11
+// copy_command "pbcopy"                      // macOS
+
+// 滚动缓冲区大小
+scroll_buffer_size 10000
+
+// 鼠标支持
+mouse_mode true
+
+// 面板边框
+pane_frames true
+
+// 关闭时的行为（分离而非退出）
+on_force_close "detach"
+
+// 会话序列化（可以恢复会话）
+session_serialization true
+
+// 序列化面板视口
+serialize_pane_viewport true
+
+// 自动布局
+auto_layout true
+
+// 滚动缓冲区编辑器
+scrollback_editor "nvim"
+
+// =====================================================
+// 新增快捷键说明
+// =====================================================
+
+// 此配置添加了以下快捷键（不影响默认快捷键）：
+//
+// 全局快捷键（任何模式下）：
+//   Alt + -         水平分割面板
+//   Alt + \         垂直分割面板
+//   Alt + h/j/k/l   Vim 风格导航
+//   Alt + x         关闭当前面板
+//   Alt + X         关闭当前标签
+//   Alt + 1-9       快速跳转到第 N 个标签
+//   Alt + t         新建标签
+//   Alt + f         切换全屏
+//   Alt + s         进入滚动模式
+//   Ctrl + e        打开文件选择器
+//
+// 滚动模式增强：
+//   /               搜索
+//   g               跳到顶部
+//   G               跳到底部
+//
+// 搜索模式增强：
+//   N               向上搜索
+//
+// 所有默认快捷键仍然可用：
+//   Ctrl + p        进入面板模式
+//   Ctrl + t        进入标签模式
+//   Ctrl + n        进入调整大小模式
+//   Ctrl + h        进入移动模式
+//   Ctrl + s        进入滚动模式
+//   Ctrl + o        进入会话模式
+//   Ctrl + b        进入 Tmux 模式
+//   Ctrl + g        进入锁定模式
+//   Ctrl + q        退出 Zellij
+//
+// 查看完整说明：cat ~/Documents/4/zellij-readme.md
+// 查看快捷键速查：cat ~/Documents/4/zellij-cheatsheet.md
