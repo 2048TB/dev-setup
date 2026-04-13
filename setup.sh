@@ -746,11 +746,26 @@ install_fonts_and_dependencies() {
 # 检查是否应该安装 Nerd Fonts
 _should_install_nerd_fonts() {
   if [ -t 0 ]; then
-    read -p "是否安装 Nerd Fonts？[y/N] " -n 1 -r
+    local font_choice
     echo
-    [[ $REPLY =~ ^[Yy]$ ]] && return 0
-    info "跳过 Nerd Fonts 安装"
-    return 1
+    info "Nerd Fonts 安装选项："
+    info "  1. 安装"
+    info "  2. 跳过（默认）"
+
+    while true; do
+      read -p "请选择 [1/2，默认 2]: " -n 1 -r font_choice
+      echo
+      font_choice="${font_choice:-2}"
+
+      case "$font_choice" in
+        1) return 0 ;;
+        2)
+          info "跳过 Nerd Fonts 安装"
+          return 1
+          ;;
+        *) warn "无效选择，请输入 1 或 2" ;;
+      esac
+    done
   fi
 
   if [ "${INSTALL_NERD_FONTS:-no}" != "yes" ]; then
@@ -1772,9 +1787,26 @@ deploy_config_files() {
 
   # 支持非交互式模式
   if [ -t 0 ]; then
-    read -p "部署配置文件？[Y/n] " -n 1 -r
+    local deploy_choice
     echo
-    [[ $REPLY =~ ^[Nn]$ ]] && return
+    info "配置文件部署选项："
+    info "  1. 部署（默认）"
+    info "  2. 跳过"
+
+    while true; do
+      read -p "请选择 [1/2，默认 1]: " -n 1 -r deploy_choice
+      echo
+      deploy_choice="${deploy_choice:-1}"
+
+      case "$deploy_choice" in
+        1) break ;;
+        2)
+          info "跳过配置文件部署"
+          return 0
+          ;;
+        *) warn "无效选择，请输入 1 或 2" ;;
+      esac
+    done
   else
     [ "${DEPLOY_CONFIGS:-yes}" = "no" ] && return
   fi
