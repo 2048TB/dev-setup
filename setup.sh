@@ -2149,10 +2149,18 @@ verify_installations() {
 
   check_cmd() {
     local cmd="$1"
+    local output=""
     shift
     if have_cmd "$cmd"; then
-      printf "  %-15s " "$cmd:"
-      "$cmd" "$@" 2>/dev/null | head -n1
+      if output="$("$cmd" "$@" 2>/dev/null | head -n1)"; then
+        if [ -n "$output" ]; then
+          printf "  %-15s %s\n" "$cmd:" "$output"
+        else
+          printf "  %-15s %s\n" "$cmd:" "已安装（无版本输出）"
+        fi
+      else
+        printf "  %-15s %s\n" "$cmd:" "已安装（版本检查失败）"
+      fi
     else
       printf "  %-15s %s\n" "$cmd:" "❌ 未找到"
     fi
@@ -2162,17 +2170,32 @@ verify_installations() {
     local label="$1"
     local primary="$2"
     local fallback="$3"
+    local output=""
     shift 3
 
     if have_cmd "$primary"; then
-      printf "  %-15s " "$label:"
-      "$primary" "$@" 2>/dev/null | head -n1
+      if output="$("$primary" "$@" 2>/dev/null | head -n1)"; then
+        if [ -n "$output" ]; then
+          printf "  %-15s %s\n" "$label:" "$output"
+        else
+          printf "  %-15s %s\n" "$label:" "已安装（无版本输出）"
+        fi
+      else
+        printf "  %-15s %s\n" "$label:" "已安装（版本检查失败）"
+      fi
       return 0
     fi
 
     if [ -n "$fallback" ] && have_cmd "$fallback"; then
-      printf "  %-15s " "$label:"
-      "$fallback" "$@" 2>/dev/null | head -n1
+      if output="$("$fallback" "$@" 2>/dev/null | head -n1)"; then
+        if [ -n "$output" ]; then
+          printf "  %-15s %s\n" "$label:" "$output"
+        else
+          printf "  %-15s %s\n" "$label:" "已安装（无版本输出）"
+        fi
+      else
+        printf "  %-15s %s\n" "$label:" "已安装（版本检查失败）"
+      fi
       return 0
     fi
 
