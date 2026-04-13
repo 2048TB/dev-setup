@@ -999,12 +999,79 @@ _post_install_debian() {
   # 创建 fd 符号链接（Debian包安装后命令是fdfind）
   if have_cmd fdfind && ! have_cmd fd; then
     safe_exec mkdir -p "$HOME/.local/bin"
-    safe_exec ln -sf /usr/bin/fdfind "$HOME/.local/bin/fd"
+    safe_exec ln -sf "$(command -v fdfind)" "$HOME/.local/bin/fd"
     info "已创建 fd -> fdfind 符号链接"
+  fi
+
+  # 创建 bat 符号链接（Debian/Ubuntu 包安装后命令通常是 batcat）
+  if have_cmd batcat && ! have_cmd bat; then
+    safe_exec mkdir -p "$HOME/.local/bin"
+    safe_exec ln -sf "$(command -v batcat)" "$HOME/.local/bin/bat"
+    info "已创建 bat -> batcat 符号链接"
   fi
 
   # 安装 gh（GitHub CLI）
   install_github_cli
+}
+
+_fastfetch_release_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "amd64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    armv6l) echo "armv6l" ;;
+    armv7l) echo "armv7l" ;;
+    i686|i386) echo "i686" ;;
+    ppc64le) echo "ppc64le" ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+_install_fastfetch_debian() {
+  local arch package_url
+
+  arch="$(_fastfetch_release_arch)" || {
+    warn "当前架构暂未适配 fastfetch 官方 Debian 包: $(uname -m)"
+    return 1
+  }
+
+  package_url="https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-${arch}.deb"
+  pkg_add_repo deb "$package_url"
+}
+
+install_packages_with_fallback() {
+  local packages=("$@")
+  local failed_packages=()
+  local pkg
+
+  [ ${#packages[@]} -eq 0 ] && return 0
+
+  if pkg_install "${packages[@]}"; then
+    return 0
+  fi
+
+  warn "批量安装失败，回退到逐包安装"
+  for pkg in "${packages[@]}"; do
+    case "$pkg" in
+      fastfetch)
+        if [ "$DISTRO" = "debian" ] && _install_fastfetch_debian; then
+          continue
+        fi
+        ;;
+    esac
+
+    if ! pkg_install "$pkg"; then
+      failed_packages+=("$pkg")
+    fi
+  done
+
+  if [ ${#failed_packages[@]} -gt 0 ]; then
+    warn "以下包未安装: ${failed_packages[*]}"
+    return 1
+  fi
+
+  return 0
 }
 
 install_base_packages() {
@@ -1022,7 +1089,7 @@ install_base_packages() {
     mapped_packages+=("$(map_package_name "$pkg")")
   done
 
-  pkg_install "${mapped_packages[@]}" || warn "部分基础包安装失败"
+  install_packages_with_fallback "${mapped_packages[@]}" || warn "部分基础包安装失败"
 
   # Debian 后处理
   [ "$DISTRO" = "debian" ] && _post_install_debian
@@ -2091,6 +2158,42 @@ verify_installations() {
     fi
   }
 
+  check_cmd_alias() {
+    local label="$1"
+    local primary="$2"
+    local fallback="$3"
+    shift 3
+
+    if have_cmd "$primary"; then
+      printf "  %-15s " "$label:"
+      "$primary" "$@" 2>/dev/null | head -n1
+      return 0
+    fi
+
+    if [ -n "$fallback" ] && have_cmd "$fallback"; then
+      printf "  %-15s " "$label:"
+      "$fallback" "$@" 2>/dev/null | head -n1
+      return 0
+    fi
+
+    printf "  %-15s %s\n" "$label:" "❌ 未找到"
+  }
+
+  check_telegram_installation() {
+    if have_cmd telegram-desktop; then
+      printf "  %-15s " "telegram:"
+      telegram-desktop --version 2>/dev/null | head -n1
+      return 0
+    fi
+
+    if have_cmd flatpak && flatpak list --app --columns=application 2>/dev/null | grep -qx "org.telegram.desktop"; then
+      printf "  %-15s %s\n" "telegram:" "Flatpak org.telegram.desktop"
+      return 0
+    fi
+
+    printf "  %-15s %s\n" "telegram:" "❌ 未找到"
+  }
+
   echo ""
   check_cmd mise --version
   check_cmd git --version
@@ -2105,8 +2208,8 @@ verify_installations() {
   check_cmd rg --version
   check_cmd fzf --version
   check_cmd zoxide --version
-  check_cmd fd --version
-  check_cmd bat --version
+  check_cmd_alias fd fd fdfind --version
+  check_cmd_alias bat bat batcat --version
   check_cmd eza --version
   check_cmd btop --version
   check_cmd gh --version
@@ -2116,7 +2219,7 @@ verify_installations() {
   check_cmd ffmpeg -version
   check_cmd ghostty --version
   check_cmd code --version
-  check_cmd telegram-desktop --version
+  check_telegram_installation
   check_cmd vicinae --version
   check_cmd fastfetch --version
   check_cmd git-absorb --version
