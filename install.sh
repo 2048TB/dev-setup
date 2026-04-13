@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_OWNER="${BOOTSTRAP_GITHUB_OWNER:-2048TB}"
 REPO_NAME="${BOOTSTRAP_GITHUB_REPO:-dev-setup}"
 REPO_REF="${BOOTSTRAP_GITHUB_REF:-main}"
-ARCHIVE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/refs/heads/${REPO_REF}.tar.gz"
+ARCHIVE_URL="https://codeload.github.com/${REPO_OWNER}/${REPO_NAME}/tar.gz/refs/heads/${REPO_REF}"
 BOOTSTRAP_TMPDIR=""
 
 have_cmd() {
