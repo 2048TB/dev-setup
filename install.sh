@@ -76,6 +76,9 @@ EOF
   fi
 
   echo "==> Running setup.sh"
+  if [ -r /dev/tty ] && [ ! -t 0 ]; then
+    exec "$runner_bash" "$extracted_dir/setup.sh" "$@" </dev/tty
+  fi
   exec "$runner_bash" "$extracted_dir/setup.sh" "$@"
 }
 
