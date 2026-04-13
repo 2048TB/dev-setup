@@ -1779,8 +1779,6 @@ deploy_config_files() {
     ["$CONFIG_DIR/.config/zellij"]="$HOME/.config/zellij"
     ["$CONFIG_DIR/.config/btop"]="$HOME/.config/btop"
     ["$CONFIG_DIR/.config/nvim"]="$HOME/.config/nvim"
-    ["$CONFIG_DIR/.config/bat"]="$HOME/.config/bat"
-    ["$CONFIG_DIR/.config/lazygit"]="$HOME/.config/lazygit"
     ["$CONFIG_DIR/.config/ghostty"]="$HOME/.config/ghostty"
     ["$CONFIG_DIR/.config/yazi"]="$HOME/.config/yazi"
   )
