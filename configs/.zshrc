@@ -78,8 +78,34 @@ eval "$(zoxide init zsh)"
 ############################################
 # FZF
 ############################################
-# shellcheck disable=SC1090
-command -v fzf >/dev/null 2>&1 && source <(fzf --zsh)
+if command -v fzf >/dev/null 2>&1; then
+    if fzf --zsh >/dev/null 2>&1; then
+        # shellcheck disable=SC1090
+        source <(fzf --zsh)
+    else
+        for fzf_script in \
+            /usr/share/fzf/completion.zsh \
+            /usr/share/doc/fzf/examples/completion.zsh \
+            /usr/local/share/fzf/completion.zsh; do
+            if [[ -f "$fzf_script" ]]; then
+                # shellcheck disable=SC1090
+                source "$fzf_script"
+                break
+            fi
+        done
+
+        for fzf_script in \
+            /usr/share/fzf/key-bindings.zsh \
+            /usr/share/doc/fzf/examples/key-bindings.zsh \
+            /usr/local/share/fzf/key-bindings.zsh; do
+            if [[ -f "$fzf_script" ]]; then
+                # shellcheck disable=SC1090
+                source "$fzf_script"
+                break
+            fi
+        done
+    fi
+fi
 
 ############################################
 # Claude Code 快捷命令
