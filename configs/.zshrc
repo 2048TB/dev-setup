@@ -79,9 +79,10 @@ eval "$(zoxide init zsh)"
 # FZF
 ############################################
 if command -v fzf >/dev/null 2>&1; then
-    if fzf --zsh >/dev/null 2>&1; then
+    if fzf_zsh_init="$(fzf --zsh 2>/dev/null)"; then
         # shellcheck disable=SC1090
-        source <(fzf --zsh)
+        eval "$fzf_zsh_init"
+        unset fzf_zsh_init
     else
         for fzf_script in \
             /usr/share/fzf/completion.zsh \
@@ -150,7 +151,7 @@ fi
 # GPG TTY 设置（Git 签名需要）
 ############################################
 if [ -n "$TTY" ]; then
-    GPG_TTY="$(tty)"
+    GPG_TTY="$TTY"
     export GPG_TTY
 fi
 

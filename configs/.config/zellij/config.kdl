@@ -3,10 +3,10 @@
 // =====================================================
 //
 // 此配置不覆盖任何默认快捷键，只添加额外的常用快捷键
-// 配合使用：zellij-readme.md（说明文档）和 zellij-cheatsheet.md（速查表）
+// 配合使用：README.md（说明文档）和 CHEATSHEET.md（速查表）
 //
 // 安装方法：
-//   cp zellij-config.kdl ~/.config/zellij/config.kdl
+//   cp config.kdl ~/.config/zellij/config.kdl
 //   重启 Zellij 或按 Ctrl+o → c 重新载入
 //
 // =====================================================
@@ -180,5 +180,5 @@ scrollback_editor "nvim"
 //   Ctrl + g        进入锁定模式
 //   Ctrl + q        退出 Zellij
 //
-// 查看完整说明：cat ~/Documents/4/zellij-readme.md
-// 查看快捷键速查：cat ~/Documents/4/zellij-cheatsheet.md
+// 查看完整说明：cat ~/.config/zellij/README.md
+// 查看快捷键速查：cat ~/.config/zellij/CHEATSHEET.md

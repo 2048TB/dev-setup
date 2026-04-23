@@ -15,9 +15,9 @@
 # 加载 ~/.bashrc.d/
 ############################################
 if [ -d ~/.bashrc.d ]; then
-    for rc in ~/.bashrc.d/*; do
-        # shellcheck disable=SC1090
-        [ -f "$rc" ] && . "$rc"
-    done
+	for rc in ~/.bashrc.d/*; do
+		# shellcheck disable=SC1090
+		[ -f "$rc" ] && . "$rc"
+	done
 fi
 unset rc

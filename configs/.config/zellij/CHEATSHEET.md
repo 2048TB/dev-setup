@@ -304,17 +304,17 @@ Alt + 3       # 第 3 个标签
 
 ```bash
 # 查看此速查表
-cat ~/Documents/4/zellij-cheatsheet.md
+cat ~/.config/zellij/CHEATSHEET.md
 
 # 查看详细说明
-cat ~/Documents/4/zellij-readme.md
+cat ~/.config/zellij/README.md
 
 # 搜索特定功能
-grep "分割" ~/Documents/4/zellij-cheatsheet.md
+grep "分割" ~/.config/zellij/CHEATSHEET.md
 ```
 
 ---
 
 **配置文件**：`~/.config/zellij/config.kdl`
-**详细说明**：`~/Documents/4/zellij-readme.md`
+**详细说明**：`~/.config/zellij/README.md`
 **最后更新**：2025-11-05

@@ -8,9 +8,9 @@
 
 | 文件 | 说明 |
 |------|------|
-| `zellij-config.kdl` | 配置文件（安装到 `~/.config/zellij/config.kdl`） |
-| `zellij-readme.md` | 本文档（详细说明） |
-| `zellij-cheatsheet.md` | 快捷键速查表（打印或随时查看） |
+| `config.kdl` | 配置文件（安装到 `~/.config/zellij/config.kdl`） |
+| `README.md` | 本文档（详细说明） |
+| `CHEATSHEET.md` | 快捷键速查表（打印或随时查看） |
 
 ---
 
@@ -25,7 +25,7 @@ cp ~/.config/zellij/config.kdl ~/.config/zellij/config.kdl.backup
 ### 2. 安装新配置
 
 ```bash
-cp ~/Documents/4/zellij-config.kdl ~/.config/zellij/config.kdl
+cp configs/.config/zellij/config.kdl ~/.config/zellij/config.kdl
 ```
 
 ### 3. 重新载入配置
@@ -104,7 +104,7 @@ Ctrl + q        退出 Zellij
 Esc / Enter     返回普通模式
 ```
 
-在各个模式中，还有大量默认快捷键可用。详见 `zellij-cheatsheet.md` 速查表。
+在各个模式中，还有大量默认快捷键可用。详见 `CHEATSHEET.md` 速查表。
 
 ---
 
@@ -256,17 +256,12 @@ normal {
 
 - **快速查看速查表**：
   ```bash
-  cat ~/Documents/4/zellij-cheatsheet.md
+  cat ~/.config/zellij/CHEATSHEET.md
   ```
 
-- **完整配置指南**：
+- **完整配置说明**：
   ```bash
-  cat ~/Documents/4/zellij-keybinds-guide.md
-  ```
-
-- **中文化方案**：
-  ```bash
-  cat ~/Documents/4/zellij-chinese-ui-guide.md
+  cat ~/.config/zellij/README.md
   ```
 
 ---
@@ -311,5 +306,5 @@ Alt + s → /     搜索历史输出
 ---
 
 **配置文件位置**：`~/.config/zellij/config.kdl`
-**快速查看速查表**：`cat ~/Documents/4/zellij-cheatsheet.md`
+**快速查看速查表**：`cat ~/.config/zellij/CHEATSHEET.md`
 **官方文档**：https://zellij.dev/documentation/

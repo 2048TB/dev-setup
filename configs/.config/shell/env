@@ -7,10 +7,10 @@
 # 用户 PATH 配置
 ############################################
 add_to_path() {
-    case ":$PATH:" in
-        *":$1:"*) ;;
-        *) PATH="$1:$PATH" ;;
-    esac
+	case ":$PATH:" in
+	*":$1:"*) ;;
+	*) PATH="$1:$PATH" ;;
+	esac
 }
 
 add_to_path "$HOME/.local/bin"
@@ -20,20 +20,20 @@ add_to_path "$HOME/bin"
 # Homebrew
 ############################################
 if [ -x /opt/homebrew/bin/brew ]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
+	eval "$(/opt/homebrew/bin/brew shellenv)"
 elif [ -x /usr/local/bin/brew ]; then
-    eval "$(/usr/local/bin/brew shellenv)"
+	eval "$(/usr/local/bin/brew shellenv)"
 fi
 
 ############################################
 # Mise
 ############################################
 if command -v mise >/dev/null 2>&1; then
-    if [ -n "${ZSH_VERSION:-}" ]; then
-        eval "$(mise activate zsh)"
-    else
-        eval "$(mise activate bash)"
-    fi
+	if [ -n "${ZSH_VERSION:-}" ]; then
+		eval "$(mise activate zsh)"
+	else
+		eval "$(mise activate bash)"
+	fi
 fi
 
 ############################################
