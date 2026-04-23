@@ -114,7 +114,7 @@ default_mode "normal"
 // 默认 Shell
 // default_shell "zsh"
 
-// 复制命令（根据你的系统选择）
+// 复制命令（macOS 部署时会自动改为 pbcopy）
 copy_command "wl-copy"                    // Wayland
 // copy_command "xclip -selection clipboard"  // X11
 // copy_command "pbcopy"                      // macOS

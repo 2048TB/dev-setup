@@ -30,6 +30,7 @@ edit = [
 
 open = [
     { run = 'xdg-open "$@"', desc = "Open", for = "linux" },
+    { run = 'open "$@"', desc = "Open", for = "macos" },
 ]
 
 # 文本文件
@@ -39,7 +40,8 @@ text = [
 
 # 图片文件
 image = [
-    { run = 'imv "$@"', orphan = true, desc = "Open with imv" },
+    { run = 'imv "$@"', orphan = true, desc = "Open with imv", for = "linux" },
+    { run = 'open "$@"', orphan = true, desc = "Open", for = "macos" },
 ]
 
 # 视频文件
@@ -49,12 +51,14 @@ video = [
 
 # PDF 文件
 pdf = [
-    { run = 'zathura "$@"', orphan = true, desc = "Open with zathura" },
+    { run = 'zathura "$@"', orphan = true, desc = "Open with zathura", for = "linux" },
+    { run = 'open "$@"', orphan = true, desc = "Open", for = "macos" },
 ]
 
 # 归档文件
 archive = [
-    { run = 'file-roller "$@"', orphan = true, desc = "Extract with file-roller" },
+    { run = 'file-roller "$@"', orphan = true, desc = "Extract with file-roller", for = "linux" },
+    { run = 'open "$@"', orphan = true, desc = "Open", for = "macos" },
 ]
 
 # Markdown 文件
@@ -69,7 +73,8 @@ code = [
 
 # Office 文档（使用系统默认）
 office = [
-    { run = 'xdg-open "$@"', orphan = true, desc = "Open with default application" },
+    { run = 'xdg-open "$@"', orphan = true, desc = "Open with default application", for = "linux" },
+    { run = 'open "$@"', orphan = true, desc = "Open with default application", for = "macos" },
 ]
 
 [open]
@@ -165,4 +170,3 @@ enabled = false
 
 [theme]
 # 不在此文件配置主题，使用单独的 theme.toml
-

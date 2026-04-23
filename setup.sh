@@ -333,7 +333,7 @@ _map_package_brew() {
 	# 字体（Homebrew 使用 Cask）
 	fonts-jetbrains-mono | jetbrains-mono-fonts) echo "CASK:font-jetbrains-mono" ;;
 	fonts-noto-cjk | google-noto-sans-cjk-fonts) echo "SKIP:macOS 自带 CJK 字体" ;;
-	fonts-noto-color-emoji | google-noto-emoji-fonts) echo "SKIP:macOS 自带 Emoji" ;;
+	fonts-noto-color-emoji | google-noto-emoji-fonts) echo "CASK:font-noto-color-emoji" ;;
 
 	# Linux 专用软件（macOS 不需要或有替代）
 	papirus-icon-theme) echo "SKIP:图标主题（macOS 不适用）" ;;
@@ -933,7 +933,7 @@ _install_nerd_fonts_debian() {
 # Nerd Fonts 安装 - macOS
 _install_nerd_fonts_macos() {
 	log "通过 Homebrew Cask 安装 Nerd Fonts..."
-	pkg_install_cask font-jetbrains-mono-nerd-font || warn "Nerd Fonts 安装失败"
+	pkg_install_cask font-symbols-only-nerd-font || warn "Nerd Fonts 安装失败"
 }
 
 install_nerd_fonts() {
@@ -1254,6 +1254,16 @@ install_ffmpeg() {
 
 # Docker 安装辅助函数 - macOS
 _install_docker_macos() {
+	if macos_app_exists "Docker"; then
+		info "Docker.app 已安装，跳过"
+		return 0
+	fi
+
+	if ! macos_version_at_least 14; then
+		warn "Docker Desktop 当前版本需要 macOS 14+，当前系统将跳过"
+		return 0
+	fi
+
 	log "安装 Docker Desktop（macOS）..."
 	pkg_install_cask docker || warn "Docker Desktop 安装失败"
 	info "Docker Desktop 已安装，请手动启动应用"
@@ -2028,6 +2038,17 @@ change_default_shell_to_zsh() {
 		return
 	fi
 
+	if [ "$OS" = "macos" ]; then
+		if ! grep -qx "$zsh_path" /etc/shells 2>/dev/null; then
+			info "如需将 Homebrew zsh 设为默认 Shell，请先手动加入 /etc/shells："
+			info "  sudo sh -c 'echo $zsh_path >> /etc/shells'"
+		fi
+		info "macOS 需要手动切换默认 shell（需要输入密码）："
+		info "  chsh -s $zsh_path"
+		info "或稍后在\"系统设置 > 用户与群组\"中修改"
+		return 0
+	fi
+
 	# 检查 zsh 是否在 /etc/shells 中
 	if ! grep -qx "$zsh_path" /etc/shells 2>/dev/null; then
 		info "将 zsh 添加到 /etc/shells..."
@@ -2042,18 +2063,11 @@ change_default_shell_to_zsh() {
 
 	# 切换默认 Shell
 	info "正在切换默认 Shell 到 zsh..."
-	if [ "$OS" = "macos" ]; then
-		# macOS chsh 需要密码，无法通过脚本自动化
-		info "macOS 需要手动切换默认 shell（需要输入密码）："
-		info "  chsh -s $zsh_path"
-		info "或稍后在\"系统设置 > 用户与群组\"中修改"
+	if safe_exec chsh -s "$zsh_path"; then
+		info "默认 Shell 已切换到 zsh（重新登录生效）"
 	else
-		if safe_exec chsh -s "$zsh_path"; then
-			info "默认 Shell 已切换到 zsh（重新登录生效）"
-		else
-			warn "切换默认 Shell 失败"
-			info "您可以稍后手动执行: chsh -s $zsh_path"
-		fi
+		warn "切换默认 Shell 失败"
+		info "您可以稍后手动执行: chsh -s $zsh_path"
 	fi
 }
 
@@ -2160,6 +2174,46 @@ _deploy_config_item() {
 	return 0
 }
 
+_replace_config_line() {
+	local file="$1"
+	local old="$2"
+	local new="$3"
+	local tmp_file
+
+	[ -f "$file" ] || return 0
+	grep -Fq "$old" "$file" || return 0
+
+	tmp_file="$(mktemp)" || return 1
+	if ! awk -v old="$old" -v new="$new" '
+		index($0, old) { print new; next }
+		{ print }
+	' "$file" >"$tmp_file"; then
+		rm -f "$tmp_file"
+		return 1
+	fi
+
+	if ! mv "$tmp_file" "$file"; then
+		rm -f "$tmp_file"
+		return 1
+	fi
+}
+
+_adjust_deployed_configs_for_os() {
+	local zellij_config="$HOME/.config/zellij/config.kdl"
+
+	case "$OS" in
+	macos)
+		if [ "$DRY_RUN" = true ]; then
+			info "[DRY-RUN] 将配置 Zellij 使用 pbcopy"
+			return 0
+		fi
+		_replace_config_line "$zellij_config" \
+			'copy_command "wl-copy"' \
+			'copy_command "pbcopy"                      // macOS'
+		;;
+	esac
+}
+
 deploy_config_files() {
 	[ "$SKIP_CONFIG" = true ] && return
 
@@ -2232,6 +2286,10 @@ deploy_config_files() {
 			deploy_failed=true
 		fi
 	done
+
+	if ! _adjust_deployed_configs_for_os; then
+		deploy_failed=true
+	fi
 
 	if [ "$deploy_failed" = true ]; then
 		warn "配置文件部署存在失败项"
@@ -2440,6 +2498,7 @@ usage() {
     - 支持 Intel 和 Apple Silicon
     - 自动安装 Homebrew 和 Xcode Command Line Tools
     - Ghostty 在 macOS 上需要 13+
+    - Docker Desktop 当前版本需要 14+
 
 特别说明:
   通用:
@@ -2450,6 +2509,7 @@ usage() {
   macOS 用户:
     - 首次运行会自动安装 Xcode CLT 和 Homebrew（需要网络）
     - Docker 将安装 Docker Desktop（需要手动启动）
+    - macOS 12/13 上会自动跳过 Docker Desktop
     - Ghostty 在 macOS 12 上会自动跳过
     - 部分 Linux 专用软件将自动跳过
 

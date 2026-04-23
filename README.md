@@ -37,6 +37,7 @@ bash setup.sh
 - `Linux`: `Fedora`、`Debian`、`Ubuntu`、`Linux Mint`、`Pop!_OS`
 - `macOS`: `macOS 12+`
   - `Ghostty` 在 `macOS` 上需要 `13+`
+  - `Docker Desktop` 当前版本需要 `14+`
 
 ## 运行方式
 
@@ -73,4 +74,5 @@ bash setup.sh -s rust -s bun
 - `Debian/Ubuntu` 上会自动处理 `fd/fdfind`、`bat/batcat` 这类命令名差异
 - 脚本支持重复执行；已有命令和已有配置会尽量跳过或备份后覆盖
 - `macOS 12` 会自动跳过 `Ghostty`
+- `macOS 12/13` 会自动跳过 `Docker Desktop`
 - 如果 `macOS` 自动 bootstrap 失败，按终端提示手动执行 `brew install bash`
