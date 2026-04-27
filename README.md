@@ -71,7 +71,7 @@ bash setup.sh -s rust -s bun
 ## 说明
 
 - 默认会出现少量交互提示，例如 `Nerd Fonts`、配置文件部署、`Fedora Docker` 选择
-- `Debian/Ubuntu` 上会自动处理 `fd/fdfind`、`bat/batcat` 这类命令名差异
+- `fd`、`bat` 等常用 CLI 由 `mise` 管理，避免不同发行版命令名差异
 - 脚本支持重复执行；已有命令和已有配置会尽量跳过或备份后覆盖
 - `macOS 12` 会自动跳过 `Ghostty`
 - `macOS 12/13` 会自动跳过 `Docker Desktop`

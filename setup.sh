@@ -122,14 +122,23 @@ pkg_install() {
 	# 处理特殊前缀（SKIP:, CASK:）
 	local packages=()
 	local cask_packages=()
+	local -A seen_packages=()
+	local -A seen_cask_packages=()
 
 	for pkg in "$@"; do
 		if [[ "$pkg" == SKIP:* ]]; then
 			info "跳过: ${pkg#SKIP:}"
 		elif [[ "$pkg" == CASK:* ]]; then
-			cask_packages+=("${pkg#CASK:}")
+			local cask_pkg="${pkg#CASK:}"
+			if [ -z "${seen_cask_packages[$cask_pkg]+_}" ]; then
+				cask_packages+=("$cask_pkg")
+				seen_cask_packages[$cask_pkg]=1
+			fi
 		else
-			packages+=("$pkg")
+			if [ -z "${seen_packages[$pkg]+_}" ]; then
+				packages+=("$pkg")
+				seen_packages[$pkg]=1
+			fi
 		fi
 	done
 
@@ -227,29 +236,6 @@ pkg_add_repo() {
 	esac
 }
 
-install_deb_package() {
-	local package_url="$1"
-	local tmp_deb
-
-	tmp_deb=$(mktemp --suffix=.deb)
-	if ! retry_curl "$package_url" "$tmp_deb"; then
-		warn "下载 .deb 包失败: $package_url"
-		rm -f "$tmp_deb"
-		return 1
-	fi
-
-	if ! safe_exec ${SUDO} dpkg -i "$tmp_deb"; then
-		if ! safe_exec ${SUDO} apt-get install -f -y; then
-			warn ".deb 依赖修复失败: $package_url"
-			rm -f "$tmp_deb"
-			return 1
-		fi
-	fi
-
-	rm -f "$tmp_deb"
-	return 0
-}
-
 # 包名映射（处理 Fedora/Debian/Homebrew 包名差异）
 # 包名映射辅助函数 - DNF
 _map_package_dnf() {
@@ -274,7 +260,6 @@ _map_package_dnf() {
 	xz-utils) echo "xz" ;;
 	p7zip-full) echo "p7zip" ;;
 	p7zip-rar) echo "p7zip-plugins" ;;
-	fd-find) echo "fd-find" ;;
 	*) echo "$pkg" ;;
 	esac
 }
@@ -342,8 +327,6 @@ _map_package_brew() {
 	gnome-extensions-app) echo "SKIP:GNOME 专用" ;;
 
 	# CLI 工具
-	python3-pip) echo "python" ;;
-	fd-find) echo "fd" ;;
 	poppler-utils) echo "poppler" ;;
 	xz-utils | xz) echo "xz" ;;
 	p7zip-full | p7zip) echo "p7zip" ;;
@@ -427,7 +410,6 @@ retry_curl() {
 #   - "copr:repo" (Fedora COPR)
 #   - "ppa:repo" (Ubuntu PPA)
 #   - "dnf"/"apt"/"brew" (包管理器)
-#   - "cargo" (Rust cargo)
 #   - "cask" (Homebrew Cask)
 install_tool_package() {
 	local pkg_name="$1"
@@ -485,33 +467,10 @@ install_tool_package() {
 	cask)
 		pkg_install_cask "$pkg_name" || warn "$pkg_name 安装失败"
 		;;
-	cargo)
-		if ! have_cmd cargo; then
-			warn "cargo 未安装，跳过 $pkg_name"
-			return
-		fi
-		install_cargo_tool "$pkg_name" "$description"
-		;;
 	*)
 		warn "未知的安装源类型: $src"
 		;;
 	esac
-}
-
-# 通用的 Cargo 工具安装函数
-# install_cargo_tool TOOL_NAME [DESCRIPTION]
-install_cargo_tool() {
-	local tool_name="$1"
-	local description="${2:-$tool_name}"
-
-	if ! have_cmd "$tool_name"; then
-		if [ "$DRY_RUN" = true ]; then
-			info "[DRY-RUN] cargo install $tool_name"
-			return 0
-		fi
-		log "通过 cargo 安装 $description..."
-		cargo install "$tool_name" || warn "$tool_name 安装失败，可稍后手动执行: cargo install $tool_name"
-	fi
 }
 
 # append_block_if_missing_pattern "MARKER" "PATTERN" "BLOCK" "RCFILE"
@@ -836,13 +795,13 @@ install_fonts_and_dependencies() {
 	local distro_specific=()
 	case "$DISTRO" in
 	fedora)
-		distro_specific+=(git-delta pinentry-gnome3)
+		distro_specific+=(pinentry-gnome3)
 		;;
 	debian)
-		distro_specific+=(git-delta pinentry-gnome3)
+		distro_specific+=(pinentry-gnome3)
 		;;
 	macos)
-		distro_specific+=(git-delta pinentry-gnome3) # 将被映射为 pinentry-mac
+		distro_specific+=(pinentry-gnome3) # 将被映射为 pinentry-mac
 		;;
 	esac
 
@@ -1025,7 +984,6 @@ neovim
 wget
 curl
 zsh
-python3-pip
 unzip
 tmux
 pkg-config
@@ -1040,16 +998,9 @@ libbz2-dev
 libffi-dev
 zlib1g-dev
 libreadline-dev
-jq
 poppler-utils
 ripgrep
-fzf
-zoxide
 imagemagick
-fastfetch
-fd-find
-bat
-btop
 p7zip-full
 EOF
 }
@@ -1059,9 +1010,7 @@ _get_distro_specific_packages() {
 	case "$DISTRO" in
 	fedora)
 		cat <<'EOF'
-git-absorb
 gh
-just
 gnome-extensions-app
 p7zip-plugins
 EOF
@@ -1074,71 +1023,7 @@ EOF
 	macos)
 		cat <<'EOF'
 gh
-just
 EOF
-		;;
-	esac
-}
-
-ensure_command_alias() {
-	local alias_name="$1"
-	local source_name="$2"
-
-	if have_cmd "$source_name" && ! have_cmd "$alias_name"; then
-		safe_exec mkdir -p "$HOME/.local/bin"
-		safe_exec ln -sf "$(command -v "$source_name")" "$HOME/.local/bin/$alias_name"
-		info "已创建 $alias_name -> $source_name 符号链接"
-	fi
-}
-
-ensure_debian_command_aliases() {
-	ensure_command_alias fd fdfind
-	ensure_command_alias bat batcat
-}
-
-map_release_arch() {
-	local target="$1"
-	local raw_arch="${2:-$(uname -m)}"
-
-	case "${target}:${raw_arch}" in
-	fastfetch:x86_64 | fastfetch:amd64) echo "amd64" ;;
-	fastfetch:aarch64 | fastfetch:arm64) echo "aarch64" ;;
-	fastfetch:armv6l) echo "armv6l" ;;
-	fastfetch:armv7l) echo "armv7l" ;;
-	fastfetch:i686 | fastfetch:i386) echo "i686" ;;
-	fastfetch:ppc64le) echo "ppc64le" ;;
-	lazygit:x86_64 | lazygit:amd64) echo "x86_64" ;;
-	lazygit:aarch64 | lazygit:arm64) echo "arm64" ;;
-	lazygit:armv6l) echo "armv6" ;;
-	yazi:x86_64 | yazi:amd64) echo "x86_64" ;;
-	yazi:aarch64 | yazi:arm64) echo "aarch64" ;;
-	*)
-		return 1
-		;;
-	esac
-}
-
-_install_fastfetch_debian() {
-	local arch package_url
-
-	arch="$(map_release_arch fastfetch)" || {
-		warn "当前架构暂未适配 fastfetch 官方 Debian 包: $(uname -m)"
-		return 1
-	}
-
-	package_url="https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-${arch}.deb"
-	install_deb_package "$package_url"
-}
-
-install_package_with_override() {
-	local pkg="$1"
-
-	case "${DISTRO}:${pkg}" in
-	debian:fastfetch)
-		_install_fastfetch_debian
-		;;
-	*)
-		pkg_install "$pkg"
 		;;
 	esac
 }
@@ -1156,7 +1041,7 @@ install_packages_with_fallback() {
 
 	warn "批量安装失败，回退到逐包安装"
 	for pkg in "${packages[@]}"; do
-		if ! install_package_with_override "$pkg"; then
+		if ! pkg_install "$pkg"; then
 			failed_packages+=("$pkg")
 		fi
 	done
@@ -1186,10 +1071,7 @@ install_base_packages() {
 
 	install_packages_with_fallback "${mapped_packages[@]}" || warn "部分基础包安装失败"
 
-	if [ "$DISTRO" = "debian" ]; then
-		ensure_debian_command_aliases
-		install_github_cli
-	fi
+	[ "$DISTRO" = "debian" ] && install_github_cli
 }
 
 install_github_cli() {
@@ -1469,143 +1351,6 @@ install_docker() {
 	fi
 }
 
-_install_lazygit_debian() {
-	local arch version tmp_dir tarball_path binary_path api_url download_url
-
-	if [ "$DRY_RUN" = true ]; then
-		info "[DRY-RUN] 将安装 lazygit 官方 Debian 二进制包"
-		return 0
-	fi
-
-	arch="$(map_release_arch lazygit)" || {
-		warn "当前架构暂未适配 lazygit 官方二进制包: $(uname -m)"
-		return 1
-	}
-
-	api_url="https://api.github.com/repos/jesseduffield/lazygit/releases/latest"
-	if have_cmd jq; then
-		if ! version="$(retry_curl "$api_url" - | jq -r '.tag_name | sub("^v"; "")')"; then
-			warn "获取 lazygit 最新版本失败"
-			return 1
-		fi
-	else
-		if ! version="$(retry_curl "$api_url" - | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)"; then
-			warn "获取 lazygit 最新版本失败"
-			return 1
-		fi
-	fi
-
-	if [ -z "$version" ] || [ "$version" = "null" ]; then
-		warn "无法解析 lazygit 最新版本号"
-		return 1
-	fi
-
-	tmp_dir="$(mktemp -d)"
-	tarball_path="${tmp_dir}/lazygit.tar.gz"
-	binary_path="${tmp_dir}/lazygit"
-	download_url="https://github.com/jesseduffield/lazygit/releases/download/v${version}/lazygit_${version}_linux_${arch}.tar.gz"
-
-	if ! retry_curl "$download_url" "$tarball_path"; then
-		warn "下载 lazygit 官方二进制包失败"
-		rm -rf "$tmp_dir"
-		return 1
-	fi
-
-	if ! safe_exec tar -C "$tmp_dir" -xf "$tarball_path" lazygit; then
-		warn "解压 lazygit 失败"
-		rm -rf "$tmp_dir"
-		return 1
-	fi
-
-	if ! safe_exec ${SUDO} install "$binary_path" -D -t /usr/local/bin/; then
-		warn "安装 lazygit 到 /usr/local/bin 失败"
-		rm -rf "$tmp_dir"
-		return 1
-	fi
-
-	rm -rf "$tmp_dir"
-	return 0
-}
-
-install_lazygit() {
-	if [ "$MINIMAL_MODE" = true ]; then
-		info "最小模式，跳过 lazygit"
-		return
-	fi
-
-	if have_cmd lazygit; then
-		info "lazygit 已安装，跳过"
-		return
-	fi
-
-	log "安装 lazygit..."
-	case "$OS" in
-	macos)
-		pkg_install lazygit || warn "lazygit 安装失败"
-		;;
-	linux)
-		case "$DISTRO" in
-		fedora)
-			install_tool_package "lazygit" "copr:dejan/lazygit" "dnf" "brew" "lazygit"
-			;;
-		debian)
-			_install_lazygit_debian || warn "lazygit 安装失败"
-			;;
-		esac
-		;;
-	esac
-}
-
-_install_yazi_debian() {
-	local arch package_url
-
-	if [ "$DRY_RUN" = true ]; then
-		info "[DRY-RUN] 将安装 Yazi 官方 Debian 包"
-		return 0
-	fi
-
-	arch="$(map_release_arch yazi)" || {
-		warn "当前架构暂未适配 Yazi 官方 Debian 包: $(uname -m)"
-		return 1
-	}
-
-	package_url="https://github.com/sxyazi/yazi/releases/latest/download/yazi-${arch}-unknown-linux-gnu.deb"
-	install_deb_package "$package_url"
-}
-
-install_zellij() {
-	install_tool_package "zellij" "copr:varlad/zellij" "cargo" "brew" "zellij 终端多路复用器"
-}
-
-install_yazi() {
-	if [ "$MINIMAL_MODE" = true ]; then
-		info "最小模式，跳过 yazi"
-		return
-	fi
-
-	if have_cmd yazi; then
-		info "yazi 已安装，跳过"
-		return
-	fi
-
-	log "安装 yazi 文件管理器..."
-	case "$OS" in
-	macos)
-		pkg_install yazi || warn "yazi 安装失败"
-		;;
-	linux)
-		case "$DISTRO" in
-		fedora)
-			install_tool_package "yazi" "copr:lihaohong/yazi" "dnf" "brew" "yazi 文件管理器"
-			;;
-		debian)
-			_install_yazi_debian || warn "yazi 安装失败"
-			;;
-		esac
-		;;
-	esac
-}
-
 # Ghostty 安装 - Debian
 _install_ghostty_debian() {
 	info "使用非官方社区脚本安装 ghostty（mkasberg/ghostty-ubuntu）..."
@@ -1648,7 +1393,7 @@ install_ghostty() {
 	linux)
 		case "$DISTRO" in
 		fedora)
-			install_tool_package "ghostty" "copr:scottames/ghostty" "cargo" "cask" "ghostty 终端模拟器"
+			install_tool_package "ghostty" "copr:scottames/ghostty" "apt" "cask" "ghostty 终端模拟器"
 			;;
 		debian)
 			_install_ghostty_debian
@@ -1863,7 +1608,8 @@ install_mise() {
 
 	export PATH="$mise_bin_dir:$PATH"
 	if have_cmd mise; then
-		info "mise 已安装，跳过"
+		info "mise 已安装，检查更新"
+		update_mise || warn "mise 自更新失败，继续执行"
 		return 0
 	fi
 
@@ -1876,6 +1622,26 @@ install_mise() {
 	export PATH="$mise_bin_dir:$PATH"
 	if [ "$DRY_RUN" != true ] && ! have_cmd mise; then
 		warn "mise 安装后未找到命令"
+		return 1
+	fi
+
+	update_mise || warn "mise 自更新失败，继续执行"
+}
+
+update_mise() {
+	if [ "$DRY_RUN" = true ]; then
+		info "[DRY-RUN] mise self-update -y"
+		return 0
+	fi
+
+	if ! have_cmd mise; then
+		warn "mise 未找到，无法自更新"
+		return 1
+	fi
+
+	log "更新 mise..."
+	if ! safe_exec mise self-update -y; then
+		warn "mise self-update 失败；如果 mise 由系统包管理器安装，这是预期限制"
 		return 1
 	fi
 }
@@ -1893,8 +1659,26 @@ uv
 pnpm
 biome
 shfmt
+bat
+btop
+delta
+eza
+fastfetch
+fd
+fzf
+hyperfine
+jq
+just
+lazygit
+sd
+starship
+tokei
+yazi
+zellij
+zoxide
 golangci-lint
 staticcheck
+black
 npm:typescript
 npm:typescript-language-server
 npm:pyright
@@ -1903,15 +1687,9 @@ go:golang.org/x/tools/cmd/goimports
 go:github.com/go-delve/delve/cmd/dlv
 go:mvdan.cc/garble
 cargo:cargo-nextest
-cargo:eza
-cargo:sd
-cargo:tokei
-cargo:hyperfine
 cargo:git-absorb
-cargo:just
-pipx:black
+pipx
 pipx:ruff
-pipx:pipx
 pipx:pytest
 EOF
 }
@@ -1920,7 +1698,7 @@ should_skip_mise_target() {
 	local target="$1"
 
 	case "$target" in
-	rust | cargo:*)
+	rust | cargo:* | eza | sd | tokei | hyperfine | just)
 		should_skip_lang rust && return 0
 		;;
 	node | pnpm | biome | npm:*)
@@ -1929,7 +1707,10 @@ should_skip_mise_target() {
 	go | golangci-lint | staticcheck | shfmt | go:*)
 		should_skip_lang go && return 0
 		;;
-	python | uv | pipx:*)
+	lazygit | yazi | zellij)
+		[ "$MINIMAL_MODE" = true ] && return 0
+		;;
+	python | uv | black | pipx | pipx:*)
 		should_skip_lang python && return 0
 		;;
 	bun)
@@ -1993,6 +1774,7 @@ install_mise_toolchain() {
 
 	if [ "$DRY_RUN" = true ]; then
 		info "[DRY-RUN] mise install ${targets[*]}"
+		info "[DRY-RUN] mise upgrade -y ${targets[*]}"
 		return 0
 	fi
 
@@ -2007,6 +1789,11 @@ install_mise_toolchain() {
 		return 1
 	fi
 
+	log "更新 mise 管理的工具..."
+	if ! safe_exec mise upgrade -y "${targets[@]}"; then
+		warn "mise toolchain 更新失败"
+		return 1
+	fi
 }
 
 # ================= Shell 配置 =================
@@ -2076,16 +1863,6 @@ configure_shell() {
 
 	# 切换默认 Shell 到 zsh
 	change_default_shell_to_zsh
-
-	# starship
-	if ! have_cmd starship; then
-		if ! pkg_install starship; then
-			warn "包管理器安装 starship 失败，尝试官方脚本..."
-			if ! run_remote_install_script "安装 starship" sh "https://starship.rs/install.sh" -y; then
-				warn "starship 安装失败"
-			fi
-		fi
-	fi
 
 	# 注意：如果使用了配置文件部署（configs/.zshrc），则跳过修改 shell rc 文件
 	# configs/.zshrc 已包含完整配置，避免重复添加
@@ -2605,10 +2382,6 @@ _stage3_software_installation() {
 	install_mise_toolchain
 	activate_mise_for_current_session
 
-	# 终端与工具
-	install_lazygit
-	install_zellij
-	install_yazi
 	install_ghostty
 
 	# GUI 应用
